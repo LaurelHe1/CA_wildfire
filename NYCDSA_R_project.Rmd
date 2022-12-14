@@ -1,0 +1,170 @@
+---
+title: "NYCDSA_R_Project"
+author: "Laurel He"
+output: html_document
+---
+# The dataset contains the list of wildfires occured in California between 2013 - 2020, the location where the wildfires occured, the County name, latitude and longitude, acres burned and other details.
+```{r}
+library(dplyr)
+library(tidyverse)
+library(sf)
+library(tigris)
+library(mapview)
+library(leaflet)
+library(tidyr)
+library(lubridate)
+```
+```{r}
+fire = read.csv('data/California_Fire_Incidents.csv')
+fire
+```
+```{r}
+myvars = c('AcresBurned', 'Counties', 'Extinguished', 'Latitude', 'Longitude', 'MajorIncident', 'Started', 'Name')
+fire_clean = fire[myvars]
+fire_clean = fire_clean %>% drop_na() %>% filter(!grepl('1969', Started)) %>% filter(Latitude != 0 & Longitude != 0)
+fire_clean
+```
+```{r}
+start_DT = ymd_hms(fire_clean$Started)
+end_DT = ymd_hms(fire_clean$Extinguished)
+duration = difftime(end_DT, start_DT, units = "hours")
+new_fire = cbind(fire_clean, duration_hrs = as.numeric(duration), start_DT)
+new_fire$year = year(start_DT)
+new_fire = new_fire %>% drop_na() %>% filter(duration_hrs > 0 & AcresBurned > 0)
+new_fire
+```
+```{r}
+data = new_fire %>% filter(year == '2013' & Latitude == 37.85700 & Longitude == -120.0860)
+data$Name
+```
+
+```{r}
+ca_counties <- counties("CA", cb = T, progress_bar = F)
+
+leaflet() %>%
+  addTiles() %>%
+  addCircleMarkers(
+    data = new_fire %>% filter(year == '2019')
+  )
+
+```
+
+
+
+
+# Wild fire frequency and severity measured by burned acreages by year
+```{r}
+new_fire %>% group_by(year = year(start_DT)) %>% summarise(count = n()) %>% ggplot(aes(year, count)) + geom_bar(stat = 'identity')
+```
+```{r}
+# Major incidents count per year
+new_fire %>% group_by(year = year(start_DT)) %>% filter(MajorIncident == "True") %>% summarise(count = n()) %>% ggplot(aes(year, count)) + geom_bar(stat = 'identity')
+```
+
+```{r}
+new_fire %>% group_by(year = year(start_DT)) %>% summarise(totalAcres = sum(AcresBurned)) %>% ggplot(aes(year, totalAcres)) + geom_bar(stat = 'identity')
+```
+
+# Wild fire frequency and severity measured by burned acreages by time of year
+```{r}
+new_fire %>% group_by(month = month(start_DT)) %>% summarise(count=n()) %>% ggplot(aes(x=month, y=count)) + geom_bar(stat = 'identity')
+```
+```{r}
+new_fire %>% group_by(month = month(start_DT)) %>% summarise(AcresBurned = sum(AcresBurned)) %>% ggplot(aes(x=month, y=AcresBurned)) + geom_bar(stat = 'identity')
+```
+# Wild fire frequency and severity measured by burned acreages by time of day
+```{r}
+new_fire %>% group_by(hour = hour(start_DT)) %>% summarise(count=n()) %>% ggplot(aes(x=hour, y=count)) + geom_bar(stat = 'identity')
+```
+
+```{r}
+new_fire %>% group_by(hour = hour(start_DT)) %>% summarise(AcresBurned = sum(AcresBurned)) %>% ggplot(aes(x=hour, y=AcresBurned)) + geom_bar(stat = 'identity')
+```
+# total acres burned in each country from 2013 - 2020
+```{r}
+new_fire %>% group_by(Counties) %>% summarise(totalAcres = sum(AcresBurned)) %>% 
+ggplot(aes(x=reorder(Counties, totalAcres), y=totalAcres)) + geom_bar(stat = 'identity') + coord_flip()
+```
+```{r}
+# Boxplot of duration vs. year
+new_fire %>% ggplot(aes(as.character(year(start_DT)), duration_hrs)) + geom_boxplot()
+```
+```{r}
+fire_2018 = new_fire %>% filter(year(start_DT) == 2018) %>% filter(AcresBurned <= 100000 & duration_hrs < 7500) # focus on 2018 and remove outliers
+fire_2018 %>% ggplot(aes(x=duration_hrs, y=AcresBurned)) + geom_point() 
+```
+```{r}
+fire_2018 %>% ggplot(aes(x=duration_hrs, y=AcresBurned)) + geom_point() + scale_x_log10() + scale_y_log10()
+```
+
+```{r}
+model = lm(AcresBurned ~ duration_hrs, data = fire_2018) 
+
+bc = boxCox(model)
+lambda = bc$x[which(bc$y == max(bc$y))] #Extracting the best lambda value.
+fire.bc = (fire_2018$AcresBurned^lambda - 1)/lambda #Applying the Box-Cox transformation.
+
+model.bc = lm(fire.bc ~ fire_2018$duration_hrs) #Creating a new regression based on the transformed variable.
+summary(model.bc) #Assessing the output of the new model.
+```
+```{r}
+plot(model.bc)
+```
+
+
+```{r}
+fire_2018$MajorIncident = as.factor(fire_2018$MajorIncident) #Converting to a categorical variable.
+logit.overall = glm(MajorIncident ~ AcresBurned,
+                    family = "binomial",
+                    data = fire_2018) # duration_hrs wasn't a significant feature
+summary(logit.overall)
+```
+```{r}
+confint(logit.overall)
+```
+#How does the probability of admission change across ranks for a student who has an average GRE and an average GPA?
+
+```{r}
+newdata = with(fire_2018, data.frame(AcresBurned = mean(AcresBurned),
+                                       MajorIncident = factor(1:2)))
+newdata #Creating a data frame with the average GRE and GPA for each level of the rank variable.
+```
+```{r}
+cbind(newdata, "P_Major" = predict(logit.overall, newdata, type = "response"))
+```
+```{r}
+major.predicted = round(logit.overall$fitted.values)
+table(truth = fire_2018$MajorIncident, prediction = major.predicted)
+```
+
+```{r}
+pchisq(logit.overall$deviance, logit.overall$df.residual, lower.tail = FALSE)
+```
+```{r}
+1 - logit.overall$deviance/logit.overall$null.deviance
+```
+```{r}
+table(fire_2018$MajorIncident) #Our data contains 273 unadmitted students and 127
+                         #admitted students.
+```
+```{r}
+table(major.predicted) #The model we created predicts that 351 students will
+                          #not be admitted, and only 49 will be admitted.
+```
+
+```{r}
+myvars = c('AcresBurned',  'MajorIncident', 'duration_hrs')
+new_fire2 = new_fire[myvars]
+plot(new_fire2) #Basic graphical EDA.
+```
+
+```{r}
+
+
+ca_counties <- counties("CA", cb = T, progress_bar = F)
+```
+```{r}
+
+```
+
+# Shiny App to visualize fire location changes throughout the years, bubble plot: size proportional to acres burned
