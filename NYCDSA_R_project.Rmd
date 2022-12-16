@@ -3,7 +3,7 @@ title: "NYCDSA_R_Project"
 author: "Laurel He"
 output: html_document
 ---
-# The dataset contains the list of wildfires occured in California between 2013 - 2020, the location where the wildfires occured, the County name, latitude and longitude, acres burned and other details.
+# The dataset contains the list of wildfires occured in California between 2013 - 2019, the location where the wildfires occured, the County name, latitude and longitude, acres burned and other details.
 ```{r}
 library(dplyr)
 library(tidyverse)
@@ -18,6 +18,7 @@ library(lubridate)
 fire = read.csv('data/California_Fire_Incidents.csv')
 fire
 ```
+# Some data cleaning 
 ```{r}
 myvars = c('AcresBurned', 'Counties', 'Extinguished', 'Latitude', 'Longitude', 'MajorIncident', 'Started', 'Name')
 fire_clean = fire[myvars]
@@ -27,79 +28,120 @@ fire_clean
 ```{r}
 start_DT = ymd_hms(fire_clean$Started)
 end_DT = ymd_hms(fire_clean$Extinguished)
-duration = difftime(end_DT, start_DT, units = "hours")
+duration = round(difftime(end_DT, start_DT, units = "hours"), 2)
 new_fire = cbind(fire_clean, duration_hrs = as.numeric(duration), start_DT)
 new_fire$year = year(start_DT)
 new_fire = new_fire %>% drop_na() %>% filter(duration_hrs > 0 & AcresBurned > 0)
 new_fire
 ```
-```{r}
-data = new_fire %>% filter(year == '2013' & Latitude == 37.85700 & Longitude == -120.0860)
-data$Name
-```
-
+# Visualize wildfire locations on the map for a certain year. For a more user interactive version of geographic visualization, we can use Shiny app.
 ```{r}
 ca_counties <- counties("CA", cb = T, progress_bar = F)
 
 leaflet() %>%
   addTiles() %>%
+  addPolygons(
+    data = ca_counties) %>%
   addCircleMarkers(
-    data = new_fire %>% filter(year == '2019')
+    data = new_fire %>% filter(year == '2019'), color = "red", radius = 4
   )
 
 ```
-
-
-
-
-# Wild fire frequency and severity measured by burned acreages by year
+# Some barplot visualization for wild fire frequency and severity (measured by total burned acreages) across different time scales: year (which year has the most frequent and severe wild fires), month (what time of year has the most frequent and severe wild fires) and hour (what hour of the day has the most frequent and severe wild fires)?
 ```{r}
-new_fire %>% group_by(year = year(start_DT)) %>% summarise(count = n()) %>% ggplot(aes(year, count)) + geom_bar(stat = 'identity')
+# Count of wild fires per year
+new_fire %>% group_by(year) %>% summarise(count = n()) %>% 
+  ggplot(aes(x=year, y=count)) + geom_bar(stat = 'identity', fill = '#56B4E9') + 
+  xlab("Year") + ylab("Number of Wild Fires")
 ```
 ```{r}
-# Major incidents count per year
-new_fire %>% group_by(year = year(start_DT)) %>% filter(MajorIncident == "True") %>% summarise(count = n()) %>% ggplot(aes(year, count)) + geom_bar(stat = 'identity')
+# Count of wild fires each month
+new_fire %>% group_by(month = as.integer(month(start_DT))) %>% summarise(count=n()) %>%
+  ggplot(aes(x=month, y=count)) + geom_bar(stat = 'identity', fill = '#56B4E9') + 
+  xlab("Time of the Year (Month)") + ylab("Number of Wild Fires") + 
+  scale_x_continuous(breaks=c(1,2,3,4,5,6,7,8,9,10,11,12))
 ```
+```{r}
+# Count of wildfires at each hour of the day
+new_fire %>% group_by(hour = hour(start_DT)) %>% summarise(count=n()) %>%
+  ggplot(aes(x=hour, y=count)) + geom_bar(stat = 'identity', fill = '#56B4E9') + 
+  xlab("Hour of the Day") + ylab("Number of Wild Fires")
+```
+# From the above barplots, we can see that 2017 had the most frequent wildfires, July has the most wildfire occurences among other months of the year (this makes sense since the hot and dry summers in California is more prone to wildfire occurences), while 2pm has the most wildfire occurences among other hours of the day (this also makes sense since temperature in the early afternoon is the highest).
 
 ```{r}
-new_fire %>% group_by(year = year(start_DT)) %>% summarise(totalAcres = sum(AcresBurned)) %>% ggplot(aes(year, totalAcres)) + geom_bar(stat = 'identity')
+# The number of categorized major incidents per year
+new_fire %>% group_by(year) %>% filter(MajorIncident == "TRUE") %>%
+  summarise(count = n()) %>% ggplot(aes(x=year, y=count)) + geom_bar(stat = 'identity', fill = '#56B4E9')   + xlab("Year") + ylab("Number of Major Incidents")
 ```
+```{r}
+# The number of categorized major incidents each month 
+new_fire %>% group_by(month = as.integer(month(start_DT))) %>% filter(MajorIncident == "TRUE") %>%
+  summarise(count = n()) %>% ggplot(aes(x=month, y=count)) + geom_bar(stat = 'identity', fill = '#56B4E9')   + xlab("Time of the Year (Month)") + ylab("Number of Major Incidents") + 
+  scale_x_continuous(breaks=c(1,2,3,4,5,6,7,8,9,10,11,12))
+```
+```{r}
+# The number of categorized major incidents each hour of the day
+new_fire %>% group_by(hour = hour(start_DT)) %>% filter(MajorIncident == "TRUE") %>%
+  summarise(count = n()) %>% ggplot(aes(x=hour, y=count)) + geom_bar(stat = 'identity', fill = '#56B4E9')   + xlab("Hour of the Day") + ylab("Number of Major Incidents")
+```
+# From the above barplots, we can see that 2017 has the most severe wildfire incidents, July has the most severe cases among all other months and 1pm has the most severe wildfire incidents closely followed by 2pm. These results are similar to the wildfire frequency findings before.
 
-# Wild fire frequency and severity measured by burned acreages by time of year
-```{r}
-new_fire %>% group_by(month = month(start_DT)) %>% summarise(count=n()) %>% ggplot(aes(x=month, y=count)) + geom_bar(stat = 'identity')
-```
-```{r}
-new_fire %>% group_by(month = month(start_DT)) %>% summarise(AcresBurned = sum(AcresBurned)) %>% ggplot(aes(x=month, y=AcresBurned)) + geom_bar(stat = 'identity')
-```
-# Wild fire frequency and severity measured by burned acreages by time of day
-```{r}
-new_fire %>% group_by(hour = hour(start_DT)) %>% summarise(count=n()) %>% ggplot(aes(x=hour, y=count)) + geom_bar(stat = 'identity')
-```
 
 ```{r}
-new_fire %>% group_by(hour = hour(start_DT)) %>% summarise(AcresBurned = sum(AcresBurned)) %>% ggplot(aes(x=hour, y=AcresBurned)) + geom_bar(stat = 'identity')
+# Total number of acres burned per year
+new_fire %>% group_by(year) %>% summarise(totalAcres = sum(AcresBurned)) %>% 
+  ggplot(aes(x=year, y=totalAcres)) + geom_bar(stat = 'identity', fill = '#56B4E9') + 
+  xlab("Year") + ylab("Total Acres Burned")
 ```
-# total acres burned in each country from 2013 - 2020
 ```{r}
+# Total number of acres burned each month
+new_fire %>% group_by(month = as.integer(month(start_DT))) %>% summarise(totalAcres = sum(AcresBurned)) %>% ggplot(aes(x=month, y=totalAcres)) + geom_bar(stat = 'identity', fill = '#56B4E9') + 
+  xlab("Time of the Year (Month)") + ylab("Total Acres Burned") +
+  scale_x_continuous(breaks=c(1,2,3,4,5,6,7,8,9,10,11,12))
+```
+```{r}
+# Total number of acres burned each hour of the day
+new_fire %>% group_by(hour = hour(start_DT)) %>% summarise(totalAcres = sum(AcresBurned)) %>% 
+    ggplot(aes(x=hour, y=totalAcres)) + geom_bar(stat = 'identity', fill = '#56B4E9') + 
+    xlab("Hour of the Day") + ylab("Total Acres Burned")
+```
+# From the above barplots, we can see that 2018 burned out the most acreage even more than 2017. July is standing out again as the most wildfire-prone month with its largest burned acreage. 12pm seems to be the hour with the most burned acreage. 
+
+```{r}
+# We can rank the counties to see which ones have the most burned acreage in total, and it looks like it's Lake county in north central California
 new_fire %>% group_by(Counties) %>% summarise(totalAcres = sum(AcresBurned)) %>% 
-ggplot(aes(x=reorder(Counties, totalAcres), y=totalAcres)) + geom_bar(stat = 'identity') + coord_flip()
+  ggplot(aes(x=reorder(Counties, totalAcres), y=totalAcres)) + geom_bar(stat = 'identity', fill = '#56B4E9') + 
+  coord_flip() + xlab("County") + ylab("Total Acres Burned")
 ```
 ```{r}
-# Boxplot of duration vs. year
-new_fire %>% ggplot(aes(as.character(year(start_DT)), duration_hrs)) + geom_boxplot()
+# We can see that the most frequent year (2017) and the most severe year (2018) have on average longer wildfire duration. The rest of the years have on average shorter wildfire duration but can be just as variable in their duration.
+new_fire %>% ggplot(aes(as.character(year), duration_hrs)) + geom_boxplot(color = "#56B4E9") + 
+  xlab("Year") + ylab("Duration (hours)")
 ```
+# I'm curious to see if wildfire duration and acres burned have any liear relationship. I would think that the longer the fire lasts, the more acreage it will burn. 
+
 ```{r}
+# Simple correlation test shows that the two variables have little linear relationship even after applying a log transformation
+cor(new_fire$AcresBurned, new_fire$duration_hrs, method="pearson")
+cor(log(new_fire$AcresBurned), log(new_fire$duration_hrs), method="pearson")
+```
+
+
+```{r}
+# Scatter plot is dominated by outliers that mask the relationship of the majority of the data points so we removed some
 fire_2018 = new_fire %>% filter(year(start_DT) == 2018) %>% filter(AcresBurned <= 100000 & duration_hrs < 7500) # focus on 2018 and remove outliers
-fire_2018 %>% ggplot(aes(x=duration_hrs, y=AcresBurned)) + geom_point() 
+fire_2018 %>% ggplot(aes(x=duration_hrs, y=AcresBurned)) + geom_point() + xlab("Duration (hours)") + ylab("Total Acres Burned")
 ```
 ```{r}
-fire_2018 %>% ggplot(aes(x=duration_hrs, y=AcresBurned)) + geom_point() + scale_x_log10() + scale_y_log10()
+# After applying log transformation, we see the data points are still pretty random
+fire_2018 %>% ggplot(aes(x=duration_hrs, y=AcresBurned)) + geom_point() + scale_x_log10() + scale_y_log10() + xlab("log Duration (hours)") + ylab("log(Total Acres Burned)")
 ```
 
 ```{r}
+# The lack of linear relationship makes our model pretty unreliable
 model = lm(AcresBurned ~ duration_hrs, data = fire_2018) 
-
+library(car)
 bc = boxCox(model)
 lambda = bc$x[which(bc$y == max(bc$y))] #Extracting the best lambda value.
 fire.bc = (fire_2018$AcresBurned^lambda - 1)/lambda #Applying the Box-Cox transformation.
@@ -110,7 +152,7 @@ summary(model.bc) #Assessing the output of the new model.
 ```{r}
 plot(model.bc)
 ```
-
+# I would think the acres burned and wildfire duration would determine whether a fire is classified as Major Incident or not, so I did a logistic regression test and prediction. It seems like acres burned is a significant feature while duration is not, so I took duration out of the model I'm constructing.
 
 ```{r}
 fire_2018$MajorIncident = as.factor(fire_2018$MajorIncident) #Converting to a categorical variable.
@@ -122,12 +164,11 @@ summary(logit.overall)
 ```{r}
 confint(logit.overall)
 ```
-#How does the probability of admission change across ranks for a student who has an average GRE and an average GPA?
 
 ```{r}
 newdata = with(fire_2018, data.frame(AcresBurned = mean(AcresBurned),
                                        MajorIncident = factor(1:2)))
-newdata #Creating a data frame with the average GRE and GPA for each level of the rank variable.
+newdata #Creating a data frame with the average acres burned for major incident or not.
 ```
 ```{r}
 cbind(newdata, "P_Major" = predict(logit.overall, newdata, type = "response"))
@@ -144,12 +185,10 @@ pchisq(logit.overall$deviance, logit.overall$df.residual, lower.tail = FALSE)
 1 - logit.overall$deviance/logit.overall$null.deviance
 ```
 ```{r}
-table(fire_2018$MajorIncident) #Our data contains 273 unadmitted students and 127
-                         #admitted students.
+table(fire_2018$MajorIncident) #Our data contains 233 non-major incidents and 63 major incidents in 2018. 
 ```
 ```{r}
-table(major.predicted) #The model we created predicts that 351 students will
-                          #not be admitted, and only 49 will be admitted.
+table(major.predicted) #The model we created predicts that 285 non-major incidents and 11 major incidents in 2018. The true positive rate is too low.
 ```
 
 ```{r}
@@ -157,14 +196,4 @@ myvars = c('AcresBurned',  'MajorIncident', 'duration_hrs')
 new_fire2 = new_fire[myvars]
 plot(new_fire2) #Basic graphical EDA.
 ```
-
-```{r}
-
-
-ca_counties <- counties("CA", cb = T, progress_bar = F)
-```
-```{r}
-
-```
-
-# Shiny App to visualize fire location changes throughout the years, bubble plot: size proportional to acres burned
+# Because of the high variability in the dataset, both linear regression and logistic regression was unsuccessful. Some of the really severe fires that burned down a lot of acres and were put out quite quickly introduced a lot of outliers and were surprisingly not categorized as Major Incident. Some further digging and research is needed to see how each fire was categorized and are any other factors significant in making this catgorization. 
