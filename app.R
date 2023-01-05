@@ -8,24 +8,25 @@ library(tigris)
 library(mapview)
 library(leaflet)
 
-fire = read.csv(file = "data/California_Fire_Incidents.csv")
-myvars = c('AcresBurned', 'Counties', 'Extinguished', 'Latitude', 'Longitude', 'MajorIncident', 'Started', 'Name')
+fire = read.csv(file = "data/mapdataall.csv")
+myvars = c('incident_name', 'incident_county', 'incident_acres_burned', 'incident_longitude', 'incident_latitude', 'incident_id', 'incident_date_extinguished', 'incident_date_created', 'calfire_incident')
 fire_clean = fire[myvars]
-fire_clean = fire_clean %>% drop_na() %>% filter(!grepl('1969', Started)) %>% filter(Latitude != 0 & Longitude != 0)
+fire_clean = fire_clean %>% drop_na() %>% filter(!grepl('1969', incident_date_created)) %>% filter(!grepl('2009', incident_date_created)) %>% filter(incident_latitude != 0 & incident_longitude != 0)
 
-start_DT = ymd_hms(fire_clean$Started)
-end_DT = ymd_hms(fire_clean$Extinguished)
+start_DT = ymd_hms(fire_clean$incident_date_created)
+end_DT = ymd_hms(fire_clean$incident_date_extinguished)
 duration = round(difftime(end_DT, start_DT, units = "hours"), 2)
 new_fire = cbind(fire_clean, duration_hrs = as.numeric(duration), start_DT)
 new_fire$year = year(start_DT)
-new_fire = new_fire %>% drop_na() %>% filter(duration_hrs > 0 & AcresBurned > 0)
+new_fire = new_fire %>% drop_na() %>% filter(duration_hrs > 0 & incident_acres_burned > 0)
+
 ca_counties <- counties("CA", cb = T, progress_bar = F)
 
 # Define UI for application
 ui <- fluidPage(
 
     # Application title
-    headerPanel("California Wildfire 2013-2019"),
+    headerPanel("California Wildfire 2013-2022"),
 
     fluidRow(
       column(7, 
@@ -40,7 +41,7 @@ ui <- fluidPage(
                       fluidRow(column(4, 
                             selectizeInput(inputId = 'year',
                                            label = 'Wildfire Start Year',
-                                           choices = unique(new_fire$year))
+                                           choices = sort(unique(new_fire$year)))
                       )),
                       fluidRow(column(12, 
                                       h5("Profile data"),div(DT::dataTableOutput("profile_table"), style = "font-size:80%")      
@@ -100,7 +101,7 @@ server <- function(input, output, session) {
           data = ca_counties
         ) %>%
         addCircleMarkers(
-          lat = ~Latitude, lng = ~Longitude, color = "red", radius = 4
+          lat = ~incident_latitude, lng = ~incident_longitude, color = "red", radius = 4
         )
     })
   })  
@@ -110,12 +111,12 @@ server <- function(input, output, session) {
     click <- input$map_marker_click
     if (is.null(click))
       return()
-    data = new_fire %>% filter(year == input$year & Latitude == click$lat & Longitude == click$lng)
+    data = new_fire %>% filter(year == input$year & incident_latitude == click$lat & incident_longitude == click$lng)
     content <- as.character(tagList(
-          sprintf("Fire Name: %s", data$Name), tags$br(),
+          sprintf("Fire Name: %s", data$incident_name), tags$br(),
           sprintf("Fire Duration: %s hours", as.integer(data$duration_hrs)), tags$br(),
-          sprintf("Acres Burned: %s acres", data$AcresBurned), tags$br(),
-          sprintf("Major Incident: %s", data$MajorIncident)
+          sprintf("Acres Burned: %s acres", data$incident_acres_burned), tags$br(),
+          sprintf("Major Incident: %s", data$calfire_incident)
         ))
     leafletProxy(mapId = "map") %>% 
       addPopups(lat = click$lat, lng = click$lng, popup = content)
@@ -126,8 +127,8 @@ server <- function(input, output, session) {
     if (input$plot_type == "Count") {
       if (input$time1 == "Year") {
         new_fire %>% group_by(year) %>% summarise(count = n()) %>% 
-          ggplot(aes(x=year, y=count)) + geom_bar(stat = 'identity', fill = '#56B4E9') + 
-          xlab("Year") + ylab("Number of Wild Fires")
+          ggplot(aes(x=as.character(year), y=count)) + geom_bar(stat = 'identity', fill = '#56B4E9') + 
+          xlab("Year") + ylab("Number of Wild Fires") 
       }else if (input$time1 == "Month") {
           new_fire %>% group_by(month = as.integer(month(start_DT))) %>% summarise(count=n()) %>%
           ggplot(aes(x=month, y=count)) + geom_bar(stat = 'identity', fill = '#56B4E9') + 
@@ -136,7 +137,8 @@ server <- function(input, output, session) {
       }else if (input$time1 == "Hour") {
           new_fire %>% group_by(hour = hour(start_DT)) %>% summarise(count=n()) %>%
           ggplot(aes(x=hour, y=count)) + geom_bar(stat = 'identity', fill = '#56B4E9') + 
-          xlab("Hour of the Day") + ylab("Number of Wild Fires")
+          xlab("Hour of the Day") + ylab("Number of Wild Fires") + 
+          scale_x_continuous(breaks=c(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23))
       }
     }
   })
@@ -145,18 +147,19 @@ server <- function(input, output, session) {
   output$major_incident = renderPlot({
     if (input$plot_type == "Major Incident"){
       if (input$time2 == "Year") {
-          new_fire %>% group_by(year) %>% filter(MajorIncident == "TRUE") %>%
-          summarise(count = n()) %>% ggplot(aes(x=year, y=count)) + geom_bar(stat = 'identity', fill = '#56B4E9') + 
-          xlab("Year") + ylab("Number of Major Incidents")
+          new_fire %>% group_by(year) %>% filter(calfire_incident == "TRUE") %>%
+          summarise(count = n()) %>% ggplot(aes(x=as.character(year), y=count)) + geom_bar(stat = 'identity', fill = '#56B4E9') + 
+          xlab("Year") + ylab("Number of Major Incidents") 
       }else if (input$time2 == "Month") {
-        new_fire %>% group_by(month = as.integer(month(start_DT))) %>% filter(MajorIncident == "TRUE") %>%
+        new_fire %>% group_by(month = as.integer(month(start_DT))) %>% filter(calfire_incident == "TRUE") %>%
           summarise(count = n()) %>% ggplot(aes(x=month, y=count)) + geom_bar(stat = 'identity', fill = '#56B4E9') + 
           xlab("Time of the Year (Month)") + ylab("Number of Major Incidents") + 
           scale_x_continuous(breaks=c(1,2,3,4,5,6,7,8,9,10,11,12))
       }else if (input$time2 == "Hour") {
-        new_fire %>% group_by(hour = hour(start_DT)) %>% filter(MajorIncident == "TRUE") %>%
+        new_fire %>% group_by(hour = hour(start_DT)) %>% filter(calfire_incident == "TRUE") %>%
           summarise(count = n()) %>% ggplot(aes(x=hour, y=count)) + geom_bar(stat = 'identity', fill = '#56B4E9') + 
-          xlab("Hour of the Day") + ylab("Number of Major Incidents")
+          xlab("Hour of the Day") + ylab("Number of Major Incidents") + 
+          scale_x_continuous(breaks=c(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23))
        }
     } 
   })
@@ -165,27 +168,28 @@ server <- function(input, output, session) {
   output$acres_burned = renderPlot({
     if (input$plot_type == "Acres Burned"){
       if (input$time3 == "Year") {
-        new_fire %>% group_by(year) %>% summarise(totalAcres = sum(AcresBurned)) %>% 
-          ggplot(aes(x=year, y=totalAcres)) + geom_bar(stat = 'identity', fill = '#56B4E9') + 
-          xlab("Year") + ylab("Total Acres Burned")
+        new_fire %>% group_by(year) %>% summarise(totalAcres = sum(incident_acres_burned)) %>% 
+          ggplot(aes(x=as.character(year), y=totalAcres)) + geom_bar(stat = 'identity', fill = '#56B4E9') + 
+          xlab("Year") + ylab("Total Acres Burned") 
       }else if (input$time3 == "Month") {
-        new_fire %>% group_by(month = as.integer(month(start_DT))) %>% summarise(totalAcres = sum(AcresBurned)) %>% 
+        new_fire %>% group_by(month = as.integer(month(start_DT))) %>% summarise(totalAcres = sum(incident_acres_burned)) %>% 
           ggplot(aes(x=month, y=totalAcres)) + geom_bar(stat = 'identity', fill = '#56B4E9') + 
           xlab("Time of the Year (Month)") + ylab("Total Acres Burned") +
           scale_x_continuous(breaks=c(1,2,3,4,5,6,7,8,9,10,11,12))
       }else if (input$time3 == "Hour") {
-      new_fire %>% group_by(hour = hour(start_DT)) %>% summarise(totalAcres = sum(AcresBurned)) %>% 
+      new_fire %>% group_by(hour = hour(start_DT)) %>% summarise(totalAcres = sum(incident_acres_burned)) %>% 
           ggplot(aes(x=hour, y=totalAcres)) + geom_bar(stat = 'identity', fill = '#56B4E9') + 
-          xlab("Hour of the Day") + ylab("Total Acres Burned")
+          xlab("Hour of the Day") + ylab("Total Acres Burned") + 
+          scale_x_continuous(breaks=c(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23))
       }
     }
   })
   # Counties plot output
   output$county = renderPlot({
     if (input$plot_type == "County"){
-      new_fire %>% group_by(Counties) %>% summarise(totalAcres = sum(AcresBurned)) %>% 
-        ggplot(aes(x=reorder(Counties, totalAcres), y=totalAcres)) + geom_bar(stat = 'identity', fill = '#56B4E9') + 
-        coord_flip() + xlab("County") + ylab("Total Acres Burned")
+      fire_county = new_fire %>% group_by(incident_county) %>% summarise(totalAcres = sum(incident_acres_burned)) %>% arrange(desc(totalAcres))
+      fire_county = fire_county[!(fire_county$incident_county==""), ] %>% head(40)
+      fire_county %>% ggplot(aes(x=reorder(incident_county, totalAcres), y=totalAcres)) + geom_bar(stat = 'identity', fill = '#56B4E9') + coord_flip() + xlab("County") + ylab("Total Acres Burned")
     }
   })
   # Duration plot output
