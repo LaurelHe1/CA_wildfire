@@ -18,6 +18,11 @@ library(lubridate)
 fire = read.csv('data/mapdataall.csv')
 fire
 ```
+```{r}
+#unique(fire$incident_containment)
+sum(is.na(fire$incident_containment))
+```
+
 # Some data cleaning 
 ```{r}
 myvars = c('incident_name', 'incident_county', 'incident_acres_burned', 'incident_longitude', 'incident_latitude', 'incident_id', 'incident_date_extinguished', 'incident_date_created', 'calfire_incident')
@@ -139,9 +144,6 @@ cor(log(new_fire$incident_acres_burned), log(new_fire$duration_hrs), method="pea
 # scatter plot shows a highly variable distribution
 new_fire %>% ggplot(aes(x=duration_hrs, y=incident_acres_burned)) + geom_point() + xlab("Duration (hours)") + ylab("Total Acres Burned")
 ```
-```{r}
-fire_2020 %>% ggplot(aes(x=duration_hrs, y=incident_acres_burned)) + geom_point()
-```
 
 ```{r}
 # After narrowing down to a specific year like 2020 and 2021, and applying log transformation, we see the a somewhat linear trend
@@ -221,7 +223,7 @@ cbind(newdata, "P_Major" = predict(logit.overall, newdata, type = "response"))
 major.predicted = round(logit.overall$fitted.values)
 table(truth = fire_2021$calfire_incident, prediction = major.predicted)
 ```
-# Model prediction has high true positives, which is good, but the false predictions or error rate is still really high (12+29)/152 = 27.0%. Our accuracy is (39+72)/152 = 73.0%. Yet, if we were to simply predict "major incident" for every fire uniformly, we would have an accuracy of 121/190 = 63.7%. That's why the overall test of deviance was insignificant -- predicting only the intercept of the baseline probability was just as sufficient.
+# Model prediction has high true positives, which is good, but the false predictions or error rate is still really high (12+29)/152 = 27.0%. Our accuracy is (39+72)/152 = 73.0%. Yet, if we were to simply predict "major incident" for every fire uniformly, we would have an accuracy of 121/190 = 63.7%. 
 ```{r}
 pchisq(logit.overall$deviance, logit.overall$df.residual, lower.tail = FALSE)
 ```
