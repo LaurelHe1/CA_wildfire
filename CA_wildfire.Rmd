@@ -140,43 +140,62 @@ cor(log(new_fire$incident_acres_burned), log(new_fire$duration_hrs), method="pea
 new_fire %>% ggplot(aes(x=duration_hrs, y=incident_acres_burned)) + geom_point() + xlab("Duration (hours)") + ylab("Total Acres Burned")
 ```
 ```{r}
+fire_2020 %>% ggplot(aes(x=duration_hrs, y=incident_acres_burned)) + geom_point()
+```
+
+```{r}
 # After narrowing down to a specific year like 2020 and 2021, and applying log transformation, we see the a somewhat linear trend
 fire_2020 = new_fire %>% filter(year(start_DT) == 2020) 
-fire_2020 %>% ggplot(aes(x=duration_hrs, y=incident_acres_burned)) + geom_point() + scale_x_log10() + scale_y_log10() + xlab("log Duration (hours)") + ylab("log(Total Acres Burned)")
+fire_2020['log_duration'] = log(fire_2020['duration_hrs'] + 1)
+fire_2020['log_acre'] = log(fire_2020['incident_acres_burned'] + 1)
+
+plot_2020 = fire_2020 %>% ggplot(aes(x=log_duration, y=log_acre+1)) + geom_point() + xlab("log Duration (hours)") + ylab("log(Total Acres Burned)") 
+plot_2020
 ```
+# We can build simple linear regression for log fire duration and log acres burned
 ```{r}
 fire_2021 = new_fire %>% filter(year(start_DT) == 2021)
-fire_2021 %>% ggplot(aes(x=duration_hrs, y=incident_acres_burned)) + geom_point() + scale_x_log10() + scale_y_log10() + xlab("log Duration (hours)") + ylab("log(Total Acres Burned)")
-```
+fire_2021['log_duration'] = log(fire_2021['duration_hrs'] + 1)
+fire_2021['log_acre'] = log(fire_2021['incident_acres_burned'] + 1)
 
-```{r}
-# The lack of linear relationship makes our model pretty unreliable
-model = lm(incident_acres_burned ~ duration_hrs, data = fire_2020) 
-library(car)
-bc = boxCox(model)
-lambda = bc$x[which(bc$y == max(bc$y))] #Extracting the best lambda value.
-fire.bc = (fire_2020$incident_acres_burned^lambda - 1)/lambda #Applying the Box-Cox transformation.
-
-model.bc = lm(fire.bc ~ fire_2020$duration_hrs) #Creating a new regression based on the transformed variable.
-summary(model.bc) #Assessing the output of the new model.
-```
-
-```{r}
-plot(model.bc)
+plot_2021 = fire_2021 %>% ggplot(aes(x=log_duration, y=log_acre)) + geom_point() + xlab("log Duration (hours)") + ylab("log(Total Acres Burned)")
+plot_2021
 ```
 ```{r}
-model2 = lm(incident_acres_burned ~ duration_hrs, data = fire_2021) 
-library(car)
-bc2 = boxCox(model2)
-lambda2 = bc2$x[which(bc2$y == max(bc2$y))] #Extracting the best lambda value.
-fire.bc2 = (fire_2021$incident_acres_burned^lambda2 - 1)/lambda2 #Applying the Box-Cox transformation.
-
-model.bc2 = lm(fire.bc2 ~ fire_2021$duration_hrs) #Creating a new regression based on the transformed variable.
-summary(model.bc2) #Assessing the output of the new model.
+model = lm(log_acre ~ log_duration, data = fire_2020) 
+summary(model)
+```
+# log(incident_acres_burned) = 0.93603 * log(duration_hrs) + 1.90509
+# small p-value indicating log(duration_hrs) is significant in predicting log(incident_acres_burned), R^2 = 0.40
+```{r}
+plot(model)
 ```
 ```{r}
-plot(model.bc2)
+model2 = lm(log_acre ~ log_duration, data = fire_2021) 
+summary(model2)
 ```
+# log(incident_acres_burned) = 1.07078 * log(duration_hrs) + 0.80965 
+# small p-value indicating log(duration_hrs) is significant in predicting log(incident_acres_burned), R^2 = 0.48
+```{r}
+plot(model2)
+```
+# Simple Linear Regression Assumptions:
+# 1. Linearity: there exist linear relationship between log(duration) and log(acres_burned)
+# 2. Independent Errors: randomly distributed residuals around 0, red line showing a somewhat concerning v shape.
+# 3. Normality of Errors: residuals are approximatedly normally distributed; points fall on QQ plot reference line.
+# 4. Constant Variance: sqrt(residuals) vs. fitted values, red line is somewhat curved, non-constant variance.
+# 3 potential outliers and high leverage points, There is no outliers that exceed 3 standard deviations, which is good.
+
+
+```{r}
+plot_2020 + geom_line(aes(x=log_duration, y=0.93603 * log_duration + 1.90509), color='red')
+```
+```{r}
+plot_2021 + geom_line(aes(x=log_duration, y=1.07078 * log_duration + 0.80965), color='red')
+```
+# 2021 has a better fitted model.
+
+
 # I would think the acres burned and wildfire duration would determine whether a fire is classified as Major Incident or not, so I did a logistic regression test and prediction. It seems like acres burned (p-value = 0.1794 > 0.05) isn't a significant feature like duration (p-value = 0.037 < 0.05), so I took acres_burned out of the model I'm constructing.
 
 ```{r}
